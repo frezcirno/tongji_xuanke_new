@@ -29,7 +29,7 @@ class xuanke1(object):
 
         _, roundInfoList = self.getRounds()
         if len(roundInfoList) == 0:
-            self.roundId = input('提示: 当前选课没有开放, 选课功能将无效, 手动输入选课轮次: ')
+            self.roundId = input('提示: 当前选课没有开放, 可以手动输入选课轮次ID: ')  # 4973
         elif len(roundInfoList) == 1:
             roundInfo = roundInfoList[0]
             self.roundId = roundInfo['id']
@@ -38,7 +38,7 @@ class xuanke1(object):
                 print(roundInfo['id'], '->',
                       roundInfo['calendarName'], roundInfo['name'])
                 print('remark =', roundInfo['remark'])
-            self.roundId = input('请选择选课轮次: ')
+            self.roundId = input('请选择选课轮次ID: ')
 
         print('RoundId ->', self.roundId)
 
@@ -195,7 +195,7 @@ class xuanke1(object):
         return self.get('/api/cultureservice/culturePlan/studentPlanCountByStuId', params={'studentId': uid})
 
     def elect(self, courseList, withdrawClassList=[]):
-        '''选课, 参数为课程列表
+        '''选课, 参数格式如下
         {
             'courseCode': 123456,  # 课程编号
             'courseName': 'xxxxxxx',  # 课程名
@@ -364,30 +364,19 @@ def main():
     while True:
         print('当前抢课列表: ')
         for index, courseReq in enumerate(wishList):
-            print(index, '->',
+            print(index, '->', courseReq['teachClassCode'],
                   courseReq['courseName'], courseReq['teacherName'])
         print('当前退课列表: ')
         for index, courseReq in enumerate(withdrawList):
-            print(index, '->',
+            print(index, '->', courseReq['teachClassCode'],
                   courseReq['courseName'], courseReq['teacherName'])
-        print('**** 教务功能 ****')
-        print('查看我的课表 -> 0')
-        print('查询历史课表 -> 1')
-        print('**** 抢课相关 ****')
-        print('添加要抢的课 -> A')
-        print('删除要抢的课 -> B')
-        print('添加要退的课 -> X')
-        print('删除要退的课 -> Y')
-        print('导出抢/退课列表 -> EXPORT')
-        print('导入抢/退课列表 -> IMPORT')
-        print('开始抢课 -> START')
         op = input('>>> ')
-        if op == '0':  # 查看我的课表
+        if op == 'c':  # 查看我的课表
             _, myTimeTab = xuankewang.findStudentTimetab()
             for course in myTimeTab:
                 print(course['courseName'], course['teacherName'], course['credits'],
                       course['classRoomI18n'], course['classTime'], course['remark'])
-        if op == '1':  # 查看我的课表
+        elif op == 'cc':  # 查看我的课表
             _, schoolCalendar = xuankewang.schoolCalendar()
             for term in schoolCalendar:
                 print(term['id'], '->', term['fullName'])
@@ -396,7 +385,7 @@ def main():
             for course in myTimeTab:
                 print(course['courseName'], course['teacherName'], course['credits'],
                       course['classRoomI18n'], course['classTime'], course['remark'])
-        elif op == 'A':  # 添加要抢的课
+        elif op == 'a' or op == 'add':  # 添加要抢的课
             classInfo = chooseCourseAndClass(xuankewang)
             wishList.append({
                 'courseCode': classInfo['courseCode'],  # 课程编号
@@ -405,11 +394,11 @@ def main():
                 'teachClassId': classInfo['teachClassId'],  # 班级ID
                 'teacherName': classInfo['teacherName']  # 教师名
             })
-        elif op == 'B':  # 添加要抢的课
+        elif op == 'd' or op == 'delete':
             index = int(input('选择要删除的课程序号(-1取消): '))
             if 0 <= index < len(wishList):
                 wishList.pop(index)
-        elif op == 'X':
+        elif op == 'wa' or op == 'withdraw add':
             classInfo = chooseCourseAndClass(xuankewang)
             withdrawList.append({
                 'courseCode': classInfo['courseCode'],  # 课程编号
@@ -418,56 +407,75 @@ def main():
                 'teachClassId': classInfo['teachClassId'],  # 班级ID
                 'teacherName': classInfo['teacherName']  # 教师名
             })
-        elif op == 'Y':  # 添加要抢的课
+        elif op == 'wd' or op == 'withdraw delete':  # 添加要抢的课
             index = int(input('选择要删除的课程序号(-1取消): '))
             if 0 <= index < len(withdrawList):
                 withdrawList.pop(index)
-        elif op == 'EXPORT':
-            with open('wishList.json', mode='w') as f:
+        elif op == 'e' or op == 'export':
+            filename = input('输入导出文件名: ')
+            with open(filename, mode='w') as f:
                 json.dump(
                     {'wishList': wishList, 'withdrawList': withdrawList}, f)
             print('导出完毕')
-        elif op == 'IMPORT':
-            with open('wishList.json', mode='r') as f:
+        elif op == 'i' or op == 'import':
+            filename = input('输入导入文件名: ')
+            with open(filename, mode='r') as f:
                 list = json.load(f)
                 wishList = list['wishList']
                 withdrawList = list['withdrawList']
             print('导入完毕')
-        elif op == 'START':
+        elif op == 's' or op == 'start':
+            try:
+                tryElectTimes = 0  # 选课请求次数
+                while len(wishList) > 0:
+                    successCoursesList = []
+                    tryElectTimes += 1
+                    print('Elect Request #', tryElectTimes)
+                    code, _ = xuankewang.elect(wishList, withdrawList)
+                    if not code == 200:
+                        logging.warning('elect request failed')
+                        print(code, '选课请求失败, 请检查账号密码以及网络')
+                        break
+                    tryGetStatusTimes = 0
+                    while tryGetStatusTimes < 10:
+                        tryGetStatusTimes += 1
+                        _, electRes = xuankewang.electRes()
+                        print(tryGetStatusTimes, electRes['status'])
+                        if electRes['status'] == 'Ready':
+                            successCoursesList = electRes['successCourses']
+                            if successCoursesList:
+                                logging.info(
+                                    ['success ->', successCoursesList])
+                                print('success ->', successCoursesList)
+                            if electRes['failedReasons']:
+                                logging.warning(
+                                    ['failedReasons ->', electRes['failedReasons']])
+                                print(electRes['failedReasons'])
+                            break
+                        time.sleep(1)
+                    wishList = [courseReq for courseReq in wishList
+                                if not successCoursesList.count(courseReq['teachClassId'])]
+                    withdrawList = [courseReq for courseReq in withdrawList
+                                    if not successCoursesList.count(courseReq['teachClassId'])]
+            except KeyboardInterrupt:
+                print('检测到键盘终止')
+        elif op == 'q' or op == 'quit':
+            print('GoodBye')
             break
         else:
+            print('未知操作 ->', op)
+            print('"c" -> 查看我的课表')
+            print('"cc" -> 查询历史课表')
+            print('"a"|"add" -> 添加要抢的课')
+            print('"d"|"delete" -> 删除要抢的课')
+            print('"wa"|"withdraw add" -> 添加要退的课')
+            print('"wd"|"withdraw delete" -> 删除要退的课')
+            print('"e"|"export" -> 导出抢/退课列表')
+            print('"i"|"import" -> 导入抢/退课列表')
+            print('"s"|"start" -> 开始抢课')
+            print('"h"|"help" -> 提示信息')
+            print('"q"|"quit" -> 退出')
             continue
-
-    tryElectTimes = 0  # 选课请求次数
-
-    while len(wishList) > 0:
-        successCoursesList = []
-        tryElectTimes += 1
-        print('Elect Request #', tryElectTimes)
-        code, _ = xuankewang.elect(wishList)
-        if not code == 200:
-            logging.warning('elect request failed')
-            break
-        tryGetStatusTimes = 0
-        while tryGetStatusTimes < 10:
-            tryGetStatusTimes += 1
-            _, electRes = xuankewang.electRes()
-            print(tryGetStatusTimes, electRes['status'])
-            if electRes['status'] == 'Ready':
-                successCoursesList = electRes['successCourses']
-                logging.info(['success ->', successCoursesList])
-                print('Congratulations! ->', successCoursesList)
-                if electRes['failedReasons']:
-                    logging.warn(
-                        ['failedReasons ->', electRes['failedReasons']])
-                    print(electRes['failedReasons'])
-                break
-            time.sleep(1)
-
-        wishList = [wishCourse for wishCourse in wishList
-                    if not successCoursesList.count(wishCourse['teachClassId'])]
-
-    print('GoodBye')
 
 
 if __name__ == '__main__':
