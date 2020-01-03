@@ -42,6 +42,7 @@ class xuanke1(object):
         res = self.objSession.request(method, self.__baseUrl+url,
                                       params=params, data=data)
         resjson = res.json()
+        logging.info(resjson)
         if res.status_code != 200:
             logging.warning([res.status_code, resjson['message']])
             return res.status_code, resjson['message']
@@ -166,7 +167,7 @@ class xuanke1(object):
             '_t': timestamp()
         })
 
-    def findCampusProfessionList(self, grade, keyWord, pageSize=1, pageNum=5):
+    def findCampusProfessionList(self, grade, keyWord, pageSize=10, pageNum=1):
         '''获取学院设立专业的列表'''
         return self.post('/api/commonservice/campusProfession/findCampusProfessionList', data={
             'grade': grade,
@@ -337,9 +338,16 @@ def chooseCalandarId(xuankewang: xuanke1):
     if code != 200:
         print(code, schoolCalendar)
         return ''
-    for term in schoolCalendar[10:20]:
+    for term in schoolCalendar:
         print(term['id'], '->', term['fullName'])
     termId = input('输入学期编号: ')
+    if not termId:
+        print('使用当前学期')
+        code, calendarInfo = xuankewang.currentTermCalendar()
+        if code != 200:
+            print(code, calendarInfo)
+            return ''
+        termId = calendarInfo['schoolCalendar']['id']
     return termId
 
 
@@ -372,18 +380,13 @@ def main():
             for index, courseReq in enumerate(withdrawList):
                 print(index, '->', courseReq['teachClassCode'],
                       courseReq['courseName'], courseReq['teacherName'])
+
         opList = input('>>> ').split()
         opCount = len(opList)
         op = opCount and opList[0]
-        if op == 'c':  # 查看我的课表
+
+        if op == 'table':
             termId = opCount > 1 and opList[1] or chooseCalandarId(xuankewang)
-            if not termId:
-                code, calendarInfo = xuankewang.currentTermCalendar()
-                if code != 200:
-                    print(code, calendarInfo)
-                    continue
-                termId = calendarInfo['schoolCalendar']['id']
-                print('使用当前学期')
             uid = opCount > 2 and opList[2] or input(
                 '输入学号: ') or xuankewang.uid
             code, myTimeTab = xuankewang.findStudentTimetab(termId, uid)
@@ -399,15 +402,26 @@ def main():
                       course['classRoomI18n'], course['classTime'], course['remark'])
             print('一共', totalCourseCount, '门课', totalCredits, '学分')
         elif op == 'info':
-            uid = opCount > 1 and opList[1] or input(
-                '输入学号: ') or xuankewang.uid
-            _, info = xuankewang.findUserInfoByIdType(uid)
-            print(info['studentId'], info['name'], info['sexI18n'])
-            print(info['facultyI18n'], info['professionI18n'],
-                  info['grade'],  info['trainingLevelI18n'])
-            print('导师: ', info['teacherName'])
-            # _, info = xuankewang.getStuInfoByParam(uid)
-            # print(info)
+            uidList = opCount > 1 and opList[1:] or [input(
+                '输入学号: ')] or [xuankewang.uid]
+            for uid in uidList:
+                if uid.find('-') != -1:
+                    uidRange = uid.split('-')
+                    for uidIt in range(int(uidRange[0]), int(uidRange[1])):
+                        uidIt = str(uidIt)
+                        _, info = xuankewang.findUserInfoByIdType(uidIt)
+                        print(info['studentId'], info['name'], info['sexI18n'])
+                        print(info['facultyI18n'], info['professionI18n'],
+                              info['grade'],  info['trainingLevelI18n'])
+                        print('导师: ', info['teacherName'])
+                        time.sleep(0.05)
+                else:
+                    _, info = xuankewang.findUserInfoByIdType(uid)
+                    print(info['studentId'], info['name'], info['sexI18n'])
+                    print(info['facultyI18n'], info['professionI18n'],
+                          info['grade'],  info['trainingLevelI18n'])
+                    print('导师: ', info['teacherName'])
+
         elif op == 'msg':
             _, res = xuankewang.findHomePageCommonMsgPublish()
             for msg in res['list']:
@@ -433,7 +447,7 @@ def main():
                 print(majorInfo['professionCode'], majorInfo['professionName'],
                       majorInfo['professionNameEn'], majorInfo['facultyI18n'])
 
-        elif op == 'a' or op == 'add':  # 添加要抢的课
+        elif op == 'a' or op == 'add':
             classInfo = chooseCourseAndClass(xuankewang)
             if classInfo:
                 wishList.append({
@@ -443,7 +457,7 @@ def main():
                     'teachClassId': classInfo['teachClassId'],  # 班级ID
                     'teacherName': classInfo['teacherName']  # 教师名
                 })
-        elif op == 'wa' or op == 'withdraw add':
+        elif op == 'wa' or op == 'wadd':
             classInfo = chooseCourseAndClass(xuankewang)
             if classInfo:
                 withdrawList.append({
@@ -459,7 +473,7 @@ def main():
                 input('选择要删除的课程序号(-1取消): '))
             if 0 <= index < len(wishList):
                 wishList.pop(index)
-        elif op == 'wd' or op == 'withdraw delete':  # 添加要抢的课
+        elif op == 'wd' or op == 'wdelete':
             index = opCount > 1 and int(opList[1]) or int(
                 input('选择要删除的课程序号(-1取消): '))
             if 0 <= index < len(withdrawList):
@@ -580,15 +594,15 @@ def main():
             print('未知操作 ->', op)
             print('l|login  [uid] [password]    -> 登录')
             print('r|round  [roundId]           -> 选择选课轮次\n')
-            print('c        [calandarId] [uid]  -> 查看我的课表')
             print('msg                          -> 获取 1.tongji 上的通知')
+            print('info     [uid|uid1-uid2]     -> 查询学生信息\n')
             print('major    [grade] [keyWord]   -> 查询开设专业信息')
             print('course   [majorCode] [grade] [calandarId] -> 查询专业课表')
-            print('info     [uid]               -> 查询学生信息\n')
+            print('table    [calandarId] [uid]  -> 查看课表')
             print('a|add                        -> 添加要抢的课')
             print('d|delete [index]             -> 删除要抢的课')
-            print('wa|withdraw add              -> 添加要退的课')
-            print('wd|withdraw delete [index]   -> 删除要退的课')
+            print('wa|wadd                      -> 添加要退的课')
+            print('wd|wdelete [index]           -> 删除要退的课')
             print('e|export [fileName]          -> 导出抢/退课列表')
             print('i|import [fileName]          -> 导入抢/退课列表')
             print('s|start                      -> 开始抢课')
