@@ -156,15 +156,15 @@ class xuanke1(object):
                 with open('lastSucc.json', mode='r') as localDataFile:
                     localDataBk = json.load(localDataFile)
                 return (200, localDataBk)
-            except IOError:
+            except:
                 print('本地数据源获取失败, 使用网络源')
 
-        res = self.post(
+        resPair = self.post(
             '/api/electionservice/student/' + str(self.roundId) + '/getDataBk')
-        if res[0] == 200:
+        if resPair[0] == 200:
             with open('lastSucc.json', mode='w') as file:  # 本地保存一下
-                json.dump(res[0], file)
-        return res
+                json.dump(resPair[1], file)
+        return resPair
 
     def getTeachClass4Limit(self, courseCode):
         '''获取课程开班情况(包括已选人数等), courseCode为6位课程代码'''
@@ -608,6 +608,7 @@ def main():
                         # print('remark =', roundInfo['remark'])
                     xuankewang.roundId = int(input('请选择选课轮次ID: '))
             print('RoundId ->', xuankewang.roundId)
+            xuankewang.getDataBk()  # 刷新一次课程数据
 
         elif op == 't' or op == 'time':
             inputTime = opCount > 1 and opList[1] or input('输入选课请求间隔: ')
