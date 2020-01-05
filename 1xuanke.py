@@ -39,14 +39,17 @@ class xuanke1(object):
             info.append('with data =')
             info.append(data)
         logging.info(info)
-        res = self.objSession.request(method, self.__baseUrl+url,
-                                      params=params, data=data)
-        resjson = res.json()
-        logging.info(resjson)
-        if res.status_code != 200:
-            logging.warning([res.status_code, resjson['message']])
-            return res.status_code, resjson['message']
-        return resjson['code'], resjson['data']
+        try:
+            res = self.objSession.request(method, self.__baseUrl+url,
+                                          params=params, data=data)
+            resjson = res.json()
+            logging.info(resjson)
+            if res.status_code != 200:
+                return res.status_code, resjson['message']
+            return resjson['code'], resjson['data']
+        except:
+            logging.error(res.content)
+            return res.status_code, res.content
 
     def post(self, url, params=None, data=None):
         return self.__request('post', url, params, data)
@@ -67,8 +70,16 @@ class xuanke1(object):
         self.uid = res['uid']
         self.password = password
         self.token = res['token']
-        _, loginInfo = self.post('/api/sessionservice/session/login',
-                                 data={'token': self.token, 'uid': self.uid})
+        tryLoginTimes = 0
+        while tryLoginTimes < 5:
+            tryLoginTimes += 1
+            code, loginInfo = self.post('/api/sessionservice/session/login',
+                                        data={'token': self.token, 'uid': self.uid})
+            if code == 200:
+                break
+            time.sleep(2)
+        else:
+            return False
         loginUser = loginInfo['user']
         self.type = loginUser['type']
         self.isLogin = True
@@ -107,6 +118,12 @@ class xuanke1(object):
                             'type': b64encode(type.encode('utf-8')),
                             '_t': timestamp()
                         })
+
+    def myTutor(self):
+        return self.get('/api/welcomeservice/tutorStudent/myTutor', params={
+            'type': 2,
+            '_t': timestamp()
+        })
 
     def getRounds(self, projectId=1):
         '''获取选课开放信息'''
@@ -352,7 +369,7 @@ def chooseCalandarId(xuankewang: xuanke1):
 
 
 def main():
-    logging.basicConfig(filename='xuanke1.log', level=logging.INFO)
+    logging.basicConfig(filename='1xuanke.log', level=logging.INFO)
     logging.info(['Running at', timestamp()])
 
     xuankewang = xuanke1()
@@ -361,7 +378,7 @@ def main():
     withdrawList = []
     electTimePeriod = 1
     checkTimePeriod = 0.5
-    errorTimePeriod = 3
+    errorTimePeriod = 1
 
     print('**输入help查看提示信息')
 
@@ -403,7 +420,9 @@ def main():
             print('一共', totalCourseCount, '门课', totalCredits, '学分')
         elif op == 'info':
             uidList = opCount > 1 and opList[1:] or [input(
-                '输入学号: ')] or [xuankewang.uid]
+                '输入学号: ')]
+            if not uidList[0]:
+                uidList = [xuankewang.uid]
             for uid in uidList:
                 if uid.find('-') != -1:
                     uidRange = uid.split('-')
@@ -446,6 +465,9 @@ def main():
             for majorInfo in data['list']:
                 print(majorInfo['professionCode'], majorInfo['professionName'],
                       majorInfo['professionNameEn'], majorInfo['facultyI18n'])
+        elif op == 'tutor':
+            _, data = xuankewang.myTutor()
+            print(data['teacherName'], data['introduce'])
 
         elif op == 'a' or op == 'add':
             classInfo = chooseCourseAndClass(xuankewang)
@@ -501,47 +523,53 @@ def main():
                 while len(wishList):
                     successCoursesList = []
                     tryElectTimes += 1
-                    print('Elect Request #', tryElectTimes)
+                    print('发送选课请求 #', tryElectTimes)
                     code, msg = xuankewang.elect(wishList, withdrawList)
                     if code != 200:
-                        logging.error(['elect request failed', code, msg])
                         print(code, msg)
-
-                        _, msg = xuankewang.loginCheck()
-                        if type(msg) == dict and 'status' in msg.keys() and msg['status'] != 'Init':
-                            logging.warning('logouted, relogin...')
+                        print('检查是否掉线...')
+                        code, msg = xuankewang.loginCheck()
+                        if code != 200 or msg['status'] != 'Init':
+                            print('已掉线,重新登录中...')
                             xuankewang.login()
+                        tryLoadingTimes = 0
+                        while tryLoadingTimes < 5:
+                            tryLoadingTimes += 1
+                            print('加载中...', tryLoadingTimes)
+                            code, data = xuankewang.loading()
+                            if code == 200 and data['status'] == 'Ready':
+                                break
+                            time.sleep(1)
                         time.sleep(errorTimePeriod)
                         continue
                     tryGetStatusTimes = 0
                     while tryGetStatusTimes < 5:  # 最多查询次数
                         tryGetStatusTimes += 1
-                        _, electRes = xuankewang.electRes()
-                        print(tryGetStatusTimes, electRes['status'])
-                        if electRes['status'] == 'Ready':
-                            successCoursesList = electRes['successCourses']
-                            if successCoursesList:
-                                logging.info(successCoursesList)
-                                newList = []
-                                for courseReq in wishList:
-                                    if courseReq['teachClassId'] in successCoursesList:
-                                        print(courseReq['teachClassCode'],
-                                              courseReq['courseName'], courseReq['teacherName'], '选课成功')
-                                    else:
-                                        newList.append(courseReq)
-                                wishList = newList[:]
-                                newList = []
-                                for courseReq in withdrawList:
-                                    if courseReq['teachClassId'] in successCoursesList:
-                                        print(courseReq['teachClassCode'],
-                                              courseReq['courseName'], courseReq['teacherName'], '退课成功')
-                                    else:
-                                        newList.append(courseReq)
-                                withdrawList = newList[:]
-                            if electRes['failedReasons']:
-                                logging.warning(electRes['failedReasons'])
-                                print(electRes['failedReasons'])
-                            break
+                        code, electRes = xuankewang.electRes()
+                        if code == 200:
+                            print(tryGetStatusTimes, electRes['status'])
+                            if electRes['status'] == 'Ready':
+                                successCoursesList = electRes['successCourses']
+                                if successCoursesList:
+                                    newList = []
+                                    for courseReq in wishList:
+                                        if courseReq['teachClassId'] in successCoursesList:
+                                            print(courseReq['teachClassCode'],
+                                                  courseReq['courseName'], courseReq['teacherName'], '选课成功')
+                                        else:
+                                            newList.append(courseReq)
+                                    wishList = newList[:]
+                                    newList = []
+                                    for courseReq in withdrawList:
+                                        if courseReq['teachClassId'] in successCoursesList:
+                                            print(courseReq['teachClassCode'],
+                                                  courseReq['courseName'], courseReq['teacherName'], '退课成功')
+                                        else:
+                                            newList.append(courseReq)
+                                    withdrawList = newList[:]
+                                if electRes['failedReasons']:
+                                    print(electRes['failedReasons'])
+                                break
                         time.sleep(checkTimePeriod)
                     # while tryGetStatusTimes < 5
                     time.sleep(electTimePeriod)
@@ -593,9 +621,10 @@ def main():
         else:
             print('未知操作 ->', op)
             print('l|login  [uid] [password]    -> 登录')
-            print('r|round  [roundId]           -> 选择选课轮次\n')
+            print('r|round  [roundId]           -> 选择选课轮次')
             print('msg                          -> 获取 1.tongji 上的通知')
-            print('info     [uid|uid1-uid2]     -> 查询学生信息\n')
+            print('info     [uid|uid1-uid2]     -> 查询学生信息')
+            print('tutor                        -> 查询我的导师')
             print('major    [grade] [keyWord]   -> 查询开设专业信息')
             print('course   [majorCode] [grade] [calandarId] -> 查询专业课表')
             print('table    [calandarId] [uid]  -> 查看课表')
