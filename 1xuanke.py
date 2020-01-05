@@ -27,6 +27,7 @@ class xuanke1(object):
         self.password = ''
         self.token = ''
         self.type = ''
+        self.hasLogin1 = False
         self.isLogin = False
         self.roundId = 0
 
@@ -64,26 +65,25 @@ class xuanke1(object):
             uid = self.uid
         if password is None:
             password = self.password
-        res = login1(uid, password, self.objSession)
-        if not res:
-            return False
+        if not self.hasLogin1:
+            res = login1(uid, password, self.objSession)
+            if not res:
+                return 400, '统一认证失败'
+            self.hasLogin1 = True
         self.uid = res['uid']
         self.password = password
         self.token = res['token']
         tryLoginTimes = 0
-        while tryLoginTimes < 5:
+        while tryLoginTimes < 1:
             tryLoginTimes += 1
             code, loginInfo = self.post('/api/sessionservice/session/login',
                                         data={'token': self.token, 'uid': self.uid})
             if code == 200:
-                break
-            time.sleep(2)
-        else:
-            return False
-        loginUser = loginInfo['user']
-        self.type = loginUser['type']
-        self.isLogin = True
-        return True
+                loginUser = loginInfo['user']
+                self.type = loginUser['type']
+                self.isLogin = True
+                return code, loginInfo
+        return code, loginInfo
 
     def currentTermCalendar(self):
         '''获取当前学期信息'''
@@ -531,7 +531,9 @@ def main():
                         code, msg = xuankewang.loginCheck()
                         if code != 200 or msg['status'] != 'Init':
                             print('已掉线,重新登录中...')
-                            xuankewang.login()
+                            code, msg = xuankewang.login()
+                            if code != 200:
+                                print(msg)
                         tryLoadingTimes = 0
                         while tryLoadingTimes < 5:
                             tryLoadingTimes += 1
@@ -583,11 +585,11 @@ def main():
         elif op == 'l' or op == 'login':
             uid = opCount > 1 and opList[1] or input('请输入学号: ')
             key = opCount > 2 and opList[2] or input('请输入密码: ')
-            res = xuankewang.login(uid, key)
-            if res == True:
+            code, res = xuankewang.login(uid, key)
+            if code == 200:
                 print('登录成功')
             else:
-                print('登陆失败, 账号或密码错误')
+                print(res)
         elif op == 'r' or op == 'round':
             xuankewang.roundId = opCount > 1 and opList[1]
             if not xuankewang.roundId:
