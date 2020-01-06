@@ -49,8 +49,8 @@ class xuanke1(object):
                 return res.status_code, resjson['message']
             return resjson['code'], resjson['data']
         except:
-            logging.error(res.content)
-            return res.status_code, res.content
+            # logging.error(res.content)
+            return 404, 'error'
 
     def post(self, url, params=None, data=None):
         return self.__request('post', url, params, data)
@@ -523,24 +523,28 @@ def main():
                 while len(wishList):
                     successCoursesList = []
                     tryElectTimes += 1
-                    print('发送选课请求 #', tryElectTimes)
+                    print(tryElectTimes)
                     code, msg = xuankewang.elect(wishList, withdrawList)
                     if code != 200:
-                        print(code, msg)
-                        print('检查是否掉线...')
                         code, msg = xuankewang.loginCheck()
-                        if code != 200 or msg['status'] != 'Init':
-                            print('已掉线,重新登录中...')
-                            code, msg = xuankewang.login()
-                            if code != 200:
-                                print(msg)
+                        if code == 200 and type(msg) == dict and msg['status'] == 'Init':
+                            pass
+                        elif code == 502:
+                            time.sleep(5)
+                            continue
+                        else:
+                            logging.error('登录失效')
+                            xuankewang.login()
+
                         tryLoadingTimes = 0
                         while tryLoadingTimes < 5:
                             tryLoadingTimes += 1
-                            print('加载中...', tryLoadingTimes)
                             code, data = xuankewang.loading()
-                            if code == 200 and data['status'] == 'Ready':
-                                break
+                            if code == 200:
+                                if data['status'] == 'Ready':
+                                    break
+                                elif data['status'] == 'Init' or data['status'] == 'Loading':
+                                    xuankewang.loading()
                             time.sleep(1)
                         time.sleep(errorTimePeriod)
                         continue
