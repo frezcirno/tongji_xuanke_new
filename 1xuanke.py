@@ -27,7 +27,6 @@ class xuanke1(object):
         self.password = ''
         self.token = ''
         self.type = ''
-        self.hasLogin1 = False
         self.isLogin = False
         self.roundId = 0
 
@@ -65,11 +64,9 @@ class xuanke1(object):
             uid = self.uid
         if password is None:
             password = self.password
-        if not self.hasLogin1:
-            res = login1(uid, password, self.objSession)
-            if not res:
-                return 400, '统一认证失败'
-            self.hasLogin1 = True
+        res = login1(uid, password, self.objSession)
+        if not res:
+            return 400, '统一认证失败'
         self.uid = res['uid']
         self.password = password
         self.token = res['token']
