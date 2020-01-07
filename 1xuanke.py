@@ -365,6 +365,46 @@ def chooseCalandarId(xuankewang: xuanke1):
     return termId
 
 
+def getGPA(studentID, password):
+    try:
+        session = requests.Session()
+        session.headers.update(
+            {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:60.0) Gecko/20100101 Firefox/60.0'})
+        idsURL = 'https://ids.tongji.edu.cn:8443/nidp/saml2/sso'
+
+        res = session.get('http://xuanke.tongji.edu.cn:443/oiosaml/saml/login')
+        soup = BeautifulSoup(res.content, 'html.parser')
+        SAMLRequest = soup.meta['content'][6:]
+        res = session.get(SAMLRequest)
+
+        keyword = {
+            'option': 'credential',
+            'Ecom_User_ID': studentID,
+            'Ecom_Password': password
+        }
+        res = session.post(idsURL, params={'sid': 0}, data=keyword)
+
+        res = session.get(idsURL, params={'sid': 0})
+        soup = BeautifulSoup(res.content, 'html.parser')
+        SAMLConsumer = soup.form['action']
+        SAMLResponse = {
+            'SAMLResponse': soup.input['value']  # 如果密码错误,此处将无input项
+        }
+        res = session.post(SAMLConsumer, data=SAMLResponse)  # 验证OK
+
+        # 获取课程成绩
+        res = session.get('http://xuanke.tongji.edu.cn/tj_login/redirect.jsp',
+                          params={'link': '/tj_xuankexjgl/score/query/student/cjcx.jsp?qxid=20051013779916$mkid=20051013779901',
+                                  'qxid': 20051013779916,
+                                  'HELP_URL': 'null',
+                                  'MYXSJL': 'null'})
+        soup = BeautifulSoup(res.content, 'html.parser')
+        allData = [item.text.split() for item in soup('table')[1]('tr')]
+        return allData
+    except:
+        return []
+
+
 def main():
     logging.basicConfig(filename='1xuanke.log', level=logging.INFO)
     logging.info(['Running at', timestamp()])
@@ -437,6 +477,13 @@ def main():
                     print(info['facultyI18n'], info['professionI18n'],
                           info['grade'],  info['trainingLevelI18n'])
                     print('导师: ', info['teacherName'])
+
+        elif op == 'gpa':
+            if not xuankewang.isLogin:
+                print('请先登录')
+                continue
+            for item in getGPA(xuankewang.uid, xuankewang.password):
+                print(item)
 
         elif op == 'msg':
             _, res = xuankewang.findHomePageCommonMsgPublish()
@@ -628,6 +675,7 @@ def main():
             print('r|round  [roundId]           -> 选择选课轮次')
             print('msg                          -> 获取 1.tongji 上的通知')
             print('info     [uid|uid1-uid2]     -> 查询学生信息')
+            print('gpa                          -> 查询我的GPA')
             print('tutor                        -> 查询我的导师')
             print('major    [grade] [keyWord]   -> 查询开设专业信息')
             print('course   [majorCode] [grade] [calandarId] -> 查询专业课表')
