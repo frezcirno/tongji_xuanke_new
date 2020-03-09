@@ -3,5 +3,4 @@ build
 __pycache__
 *.spec
 *.log
-lastSucc.json
-wishList.json
+*.json
