@@ -17,7 +17,7 @@ def timestamp():  # 时间戳
 
 def request(session, method, url, params=None, data=None):
     '''记录Log的Request'''
-    logging.info(method+url+str(params)+str(data))
+    logging.info(method.upper()+' '+url+' '+str(params)+' '+str(data))
     return session.request(method, url, params=params, data=data)
 
 
@@ -205,7 +205,7 @@ class xuanke1(object):
     @json_api
     def getRounds(self, projectId=1):
         '''获取选课开放信息'''
-        return post(self.s, xuanke1.host+'/api/electionservice/student/getRounds',
+        return post(self.s, xuanke1.sslhost+'/api/electionservice/student/getRounds',
                     params={'projectId': projectId})
 
     @json_api
