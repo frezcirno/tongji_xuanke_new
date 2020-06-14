@@ -6,12 +6,9 @@ import logging
 import requests
 import functools
 from time import time
-from bs4 import BeautifulSoup
 from base64 import b64encode
 from fuzzywuzzy import fuzz
 from urllib.parse import parse_qsl, urlsplit
-
-logging.basicConfig(filename='api.log', level=logging.INFO)
 
 
 def timestamp():  # 时间戳
@@ -62,30 +59,39 @@ def json_api(func):
 
 
 class xuanke1(object):
-    __host = 'http://1.tongji.edu.cn'
-    __shost = 'https://1.tongji.edu.cn'
+    host = 'http://1.tongji.edu.cn'
+    sslhost = 'https://1.tongji.edu.cn'
+    login_url = 'http://1.tongji.edu.cn:30100/oiosaml/saml/login'
+    logout_url = 'http://1.tongji.edu.cn:30100/oiosaml/saml/Logout'
+    login_cons_url = 'http://1.tongji.edu.cn:30100/oiosaml/saml/SAMLAssertionConsumer'
+    # host = 'http://122.112.219.67:30669'
+    # sslhost = 'https://122.112.219.67:30669'
+    # login_url = 'http://119.3.64.212:30123/oiosaml/saml/login'
+    # logout_url = 'http://119.3.64.212:30123/oiosaml/saml/Logout'
+    # login_cons_url = 'http://122.112.219.67:30123/oiosaml/saml/SAMLAssertionConsumer'
 
-    def __init__(self):
-        self.s = requests.Session()
-        self.s.headers.update(
-            {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:60.0) Gecko/20100101 Firefox/60.0'})
+    def __init__(self, session=None):
+        if session:
+            self.s = session
+        else:
+            self.s = requests.Session()
+            self.s.headers.update(
+                {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:60.0) Gecko/20100101 Firefox/60.0'})
         self.uid = ''
-        self.password = ''
         self.token = ''
         self.user = {}
         self.roundId = 0
 
-    def __ssoLogin(self, username, password):
+    def __ssoLogin(self, uid, password):
         try:
-            res = get(self.s, 'http://1.tongji.edu.cn:30100/oiosaml/saml/login')
+            res = get(self.s, xuanke1.login_url)
             urlrequ = re.search(r'url=(.*?)"', res.text).group(1)
             res = get(self.s, urlrequ)
-            resp = ssoRequest(self.s, username, password)
+            resp = ssoRequest(self.s, uid, password)
             if not resp:
                 print('密码错误')
                 return {}
-            res = post(self.s, 'http://1.tongji.edu.cn:30100/oiosaml/saml/SAMLAssertionConsumer',
-                       data={'SAMLResponse': resp})  # 这里会跳转两次
+            res = post(self.s, xuanke1.login_cons_url, data={'SAMLResponse': resp})  # 这里会跳转两次
             return dict(parse_qsl(urlsplit(res.url).query))  # 参数返回
         except Exception as e:
             return {'Exception': e}
@@ -93,51 +99,73 @@ class xuanke1(object):
     @json_api
     def login(self, uid, password):
         '''登录获取sessionId'''
-        if not self.token:
-            if self.token:
-                self.logout()
-            ticket = self.__ssoLogin(uid, password)
-            if 'uid' in ticket:
-                self.uid = ticket['uid']
-            if 'token' in ticket:
-                self.token = ticket['token']
-            self.password = password
+        if self.token:
+            self.logout()
 
-        res = post(self.s, xuanke1.__shost+'/api/sessionservice/session/login',
+        ticket = self.__ssoLogin(uid, password)
+        if 'uid' in ticket:
+            self.uid = ticket['uid']
+        if 'token' in ticket:
+            self.token = ticket['token']
+
+        res = post(self.s, xuanke1.sslhost+'/api/sessionservice/session/login',
                    data={'uid': self.uid, 'token': self.token})
 
         return res
 
     def logout(self):
-        post(self.s, xuanke1.__shost+'/api/sessionservice/session/logout',
+        post(self.s, xuanke1.sslhost+'/api/sessionservice/session/logout',
              data={
                  'uid': self.uid,
                  'sessionid': self.s.cookies.get('sessionid')
              })
-        return get(self.s, 'http://1.tongji.edu.cn:30100/oiosaml/saml/Logout')
-
-    def _login4m3(self, username, password):
-        try:
-            res = get(self.s,
-                      'http://4m3.tongji.edu.cn/eams/samlCheck')
-            req = re.search(r'url=(.*?)"', res.text).group(1)
-            get(self.s, req)
-            resp = ssoRequest(self.s, username, password)
-            res = post(self.s, 'http://4m3.tongji.edu.cn/eams/saml/SAMLAssertionConsumer',
-                       data={'SAMLResponse': resp})
-            return True
-        except:
-            return False
+        return get(self.s, xuanke1.logout_url)
 
     @json_api
     def currentTermCalendar(self):
         '''获取当前学期信息'''
-        return get(self.s, xuanke1.__host+'/api/baseresservice/schoolCalendar/currentTermCalendar',
+        return get(self.s, xuanke1.host+'/api/baseresservice/schoolCalendar/currentTermCalendar',
                    {'_t': timestamp()})
 
     @json_api
     def schoolCalendar(self):
-        return get(self.s, xuanke1.__host+'/api/baseresservice/schoolCalendar/list', params={'_t': timestamp()})
+        '''获取校历列表'''
+        return get(self.s, xuanke1.host+'/api/baseresservice/schoolCalendar/list', params={'_t': timestamp()})
+
+    @json_api
+    def queryStudentCultureScheme(self, uid):
+        '''查询培养计划'''
+        return get(self.s, xuanke1.sslhost+'/api/cultureservice/bclStudentCultureRel/queryStudentCultureScheme',
+                   params={'stuid': uid, '_t': timestamp()})
+
+    @json_api
+    def findCultureSchemeById(self, uid):
+        '''查询培养计划信息(简略)'''
+        return get(self.s, xuanke1.sslhost+'/api/cultureservice/bclCultureScheme/findCultureSchemeById',
+                   params={'id': uid, '_t': timestamp()})
+
+    @json_api
+    def findCultScheDetailOrTemplateList(self, sid):
+        '''查询培养计划的类型'''
+        return get(self.s, xuanke1.sslhost+'/api/cultureservice/bclCultureSchemeDetail/findCultScheDetailOrTemplateList',
+                   params={'cultureId': sid, '_t': timestamp()})
+
+    @json_api
+    def deptList(self, isCourse=1, currentState=1, isUnderStudent=1):
+        '''学院列表'''
+        return post(self.s, xuanke1.sslhost+'/api/userservice/dept/list',
+                    data={'isCourse': isCourse, 'currentState': currentState, 'isUnderStudent': isUnderStudent})
+
+    @json_api
+    def query(self, authId):
+        return post(self.s, xuanke1.sslhost+'/api/commonservice/dictionary/query',
+                    data={'lang': 'cn', 'type': 'allChild', 'keys': ['X_KSLX'], 'authId': authId})
+
+    @json_api
+    def listStudentCultureScheme(self, sid):
+        '''查询培养计划内容'''
+        return get(self.s, xuanke1.sslhost+'/api/cultureservice/bclCourseLabelRelation/list/'+str(sid),
+                   params={'type': 2, '_t': timestamp()})
 
     @json_api
     def findUserInfoByIdType(self, uid=None, type=None):
@@ -146,7 +174,7 @@ class xuanke1(object):
             uid = str(self.uid)
         if type is None:
             type = str(self.user['type'])
-        return get(self.s, xuanke1.__host+'/api/studentservice/studentInfo/findUserInfoByIdType',
+        return get(self.s, xuanke1.host+'/api/studentservice/studentInfo/findUserInfoByIdType',
                    params={
                        'userId': b64encode(uid.encode('utf-8')),
                        'type': b64encode(type.encode('utf-8')),
@@ -160,7 +188,7 @@ class xuanke1(object):
             uid = str(self.uid)
         if type is None:
             type = str(self.user['type'])
-        return get(self.s, xuanke1.__host+'/api/studentservice/studentInfo/findUserInfoByType',
+        return get(self.s, xuanke1.host+'/api/studentservice/studentInfo/findUserInfoByType',
                    params={
                        'userId': b64encode(uid.encode('utf-8')),
                        'type': b64encode(type.encode('utf-8')),
@@ -169,7 +197,7 @@ class xuanke1(object):
 
     @json_api
     def myTutor(self):
-        return get(self.s, xuanke1.__host+'/api/welcomeservice/tutorStudent/myTutor', params={
+        return get(self.s, xuanke1.host+'/api/welcomeservice/tutorStudent/myTutor', params={
             'type': 2,
             '_t': timestamp()
         })
@@ -177,7 +205,7 @@ class xuanke1(object):
     @json_api
     def getRounds(self, projectId=1):
         '''获取选课开放信息'''
-        return post(self.s, xuanke1.__shost+'/api/electionservice/student/getRounds',
+        return post(self.s, xuanke1.host+'/api/electionservice/student/getRounds',
                     params={'projectId': projectId})
 
     @json_api
@@ -185,7 +213,7 @@ class xuanke1(object):
         '''检查是否登录成功, 选课前可以调用, status=Init说明OK'''
         if uid is None:
             uid = self.uid
-        return post(self.s, xuanke1.__host+'/api/electionservice/student/loginCheck', data={
+        return post(self.s, xuanke1.host+'/api/electionservice/student/loginCheck', data={
             'roundId': self.roundId,
             'studentId': uid
         })
@@ -193,20 +221,20 @@ class xuanke1(object):
     @json_api
     def loading(self):
         '''loading的时候调用了这个方法, 响应的status=Ready的时候说明OK'''
-        return post(self.s, xuanke1.__host+'/api/electionservice/student/' +
+        return post(self.s, xuanke1.host+'/api/electionservice/student/' +
                     str(self.roundId)+'/loading')
 
     @json_api
     def electRes(self):
         '''轮询选课状态, 响应的status=Processing的时候等待, 为Ready的时候说明完毕, 返回结果'''
-        return post(self.s, xuanke1.__host+'/api/electionservice/student/' +
+        return post(self.s, xuanke1.host+'/api/electionservice/student/' +
                     str(self.roundId)+'/electRes')
 
-    def getDataBk(self, allowCache=False):
+    def getDataBk(self, useCache=False):
         '''获取个人全部课表信息, 包括已修课程、计划课程、公共选修课、已选课程、正在学的课程等等
             返回类型: json
         '''
-        if allowCache:
+        if useCache:
             try:
                 with open('cache.json', mode='r') as localDataFile:
                     localDataBk = json.load(localDataFile)
@@ -219,16 +247,16 @@ class xuanke1(object):
             return {}
 
         res = post(self.s,
-                   xuanke1.__host+'/api/electionservice/student/'+str(self.roundId)+'/getDataBk')
-        if res.ok():
+                   xuanke1.host+'/api/electionservice/student/'+str(self.roundId)+'/getDataBk')
+        if res.ok:
             with open('cache.json', mode='w') as file:  # 如果获取成功, 本地保存一下
-                json.dump(res.json(), file)
-        return res.json()
+                json.dump(res.json()['data'], file)
+        return res.json()['data']
 
     @json_api
     def getTeachClass4Limit(self, courseCode):
         '''获取课程开班情况(包括已选人数等), courseCode为6位课程代码'''
-        return post(self.s, xuanke1.__host+'/api/electionservice/student/getTeachClass4Limit', params={
+        return post(self.s, xuanke1.host+'/api/electionservice/student/getTeachClass4Limit', params={
             'roundId': self.roundId,
             'courseCode': courseCode,
             'studentId': self.uid
@@ -239,7 +267,7 @@ class xuanke1(object):
         '''获取学籍信息(专业等)'''
         if uid is None:
             uid = self.uid
-        return get(self.s, xuanke1.__host+'/api/studentservice/studentDetailInfo/getStuInfoByParam', params={
+        return get(self.s, xuanke1.host+'/api/studentservice/studentDetailInfo/getStuInfoByParam', params={
             'studentId': uid,
             'stuInfoClass': '学籍信息',
             '_t': timestamp()
@@ -248,7 +276,7 @@ class xuanke1(object):
     @json_api
     def findCampusProfessionList(self, grade, keyWord, pageSize=10, pageNum=1):
         '''获取学院设立专业的列表'''
-        return post(self.s, xuanke1.__host+'/api/commonservice/campusProfession/findCampusProfessionList', data={
+        return post(self.s, xuanke1.host+'/api/commonservice/campusProfession/findCampusProfessionList', data={
             'grade': grade,
             'keyWord': keyWord,
             'pageSize_': pageSize,
@@ -258,7 +286,7 @@ class xuanke1(object):
     @json_api
     def getMajorCourseList(self, majorCode, grade, calendarId):
         '''获取专业课表'''
-        return get(self.s, xuanke1.__host+'/api/arrangementservice/timetable/major', params={
+        return get(self.s, xuanke1.host+'/api/arrangementservice/timetable/major', params={
             'code': majorCode,  # 专业代码
             'grade': grade,  # 入学年份
             'calendarId': calendarId,  # 年份
@@ -268,7 +296,7 @@ class xuanke1(object):
     @json_api
     def findHomePageCommonMsgPublish(self, pageNum=1, pageSize=20):
         '''获取系统公告'''
-        return post(self.s, xuanke1.__shost+'/api/commonservice/commonMsgPublish/findHomePageCommonMsgPublish', data={
+        return post(self.s, xuanke1.sslhost+'/api/commonservice/commonMsgPublish/findHomePageCommonMsgPublish', data={
             'pageNum_': pageNum,
             'pageSize_': pageSize
         })
@@ -278,7 +306,7 @@ class xuanke1(object):
         '''获取个人培养计划(各部分学分数)'''
         if uid is None:
             uid = self.uid
-        return get(self.s, xuanke1.__host+'/api/cultureservice/culturePlan/studentPlanCountByStuId', params={'studentId': uid})
+        return get(self.s, xuanke1.host+'/api/cultureservice/culturePlan/studentPlanCountByStuId', params={'studentId': uid})
 
     @json_api
     def elect(self, courseList, withdrawClassList=[]):
@@ -290,7 +318,7 @@ class xuanke1(object):
             'teachClassId': 111111112483123,  # 班级ID
             'teacherName': 'xx'  # 教师名
         }'''
-        return post(self.s, xuanke1.__host+'/api/electionservice/student/elect', data=json.dumps({
+        return post(self.s, xuanke1.host+'/api/electionservice/student/elect', data=json.dumps({
             'roundId': self.roundId,
             'elecClassList': courseList,
             'withdrawClassList': withdrawClassList
@@ -301,7 +329,7 @@ class xuanke1(object):
         '''个人课表'''
         if uid is None:
             uid = self.uid
-        return get(self.s, xuanke1.__host+'/api/electionservice/reportManagement/findStudentTimetab', params={
+        return get(self.s, xuanke1.host+'/api/electionservice/reportManagement/findStudentTimetab', params={
             'calendarId': calendarId,
             'studentCode': uid,
             '_t': timestamp()
@@ -309,7 +337,7 @@ class xuanke1(object):
 
     def findCourseInfoByCode(self, courseCode):
         '''查询某课程开班信息'''
-        dataBk = self.getDataBk(allowCache=True)
+        dataBk = self.getDataBk(useCache=True)
         for plan in dataBk['planCourses']:
             if plan['courseCode'] == courseCode:
                 return plan['course']
@@ -322,7 +350,7 @@ class xuanke1(object):
     def findAllCourseInfoListByName(self, courseName: str):
         '''查询某课程开班信息'''
         res = []
-        dataBk = self.getDataBk(allowCache=True)
+        dataBk = self.getDataBk(useCache=True)
         for plan in dataBk['planCourses']:
             courseInfo = plan['course']
             if courseInfo['courseName'].find(courseName) >= 0 or fuzz.ratio(courseInfo['courseName'], courseName) >= 30:
@@ -376,7 +404,9 @@ class xuanke1(object):
                 print(classInfo['teachClassCode'], '->',  classInfo['campusI18n'],
                       classInfo['teacherName'], classInfo['remark'],
                       [time['timeAndRoom'] for time in classInfo['timeTableList']])
-            teachClassCode = input('请输入你想选的班级的序号: ')
+            teachClassCode = input('请输入你想选的班级的序号(-1取消): ')
+            if teachClassCode == '-1':
+                return {}
             classInfo = [
                 eachClass for eachClass in classInfoList if eachClass['teachClassCode'] == teachClassCode][0]
 

@@ -5,19 +5,32 @@ import json
 import logging
 from lxml import etree
 from time import sleep
-
 from api import xuanke1
+
+
+logging.basicConfig(
+    filename='lastrun.log',
+    filemode='w',
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 
 class Spider:
     def __init__(self):
         self.xuankewang = xuanke1()
-        self.wishList = []
+        self.uid = ''
+        self.password = ''
+        self.electList = []
         self.withdrawList = []
         self.electTimePeriod = 1
         self.checkTimePeriod = 0.5
         self.errorTimePeriod = 1
         print('** 输入help查看提示信息')
+        if self.login() == 0:
+            self.round()
+        self.help()
 
     def table(self, args):
         argc = len(args)
@@ -102,7 +115,8 @@ class Spider:
             print('课程添加失败')
             return
 
-        li = self.wishList if args[0] == 'a' else self.withdrawList
+        op = args[0]
+        li = self.electList if op == 'add' or op == 'a' else self.withdrawList
 
         li.append({
             'courseCode': classInfo['courseCode'],  # 课程编号
@@ -117,7 +131,8 @@ class Spider:
         index = argc > 1 and int(args[1]) or int(
             input('选择要删除的课程序号(-1取消): '))
 
-        li = self.wishList if args[0] == 'd' else self.withdrawList
+        op = args[0]
+        li = self.electList if op == 'delete' or op == 'd' else self.withdrawList
 
         if 0 <= index < len(li):
             li.pop(index)
@@ -126,39 +141,41 @@ class Spider:
     def exportList(self, args):
         argc = len(args)
         filename = argc > 1 and args[1] or input(
-            '输入导出文件名: ') or 'wishList.json'
+            '输入导出文件名: ') or 'electList.json'
         with open(filename, mode='w') as f:
             json.dump(
-                {'wishList': self.wishList, 'withdrawList': self.withdrawList}, f)
+                {'electList': self.electList, 'withdrawList': self.withdrawList}, f)
         print('导出完毕')
 
     def importList(self, args):
         argc = len(args)
         filename = argc > 1 and args[1] or input(
-            '输入导入文件名: ') or 'wishList.json'
+            '输入导入文件名: ') or 'electList.json'
         try:
             with open(filename, mode='r') as f:
                 list = json.load(f)
-                if 'wishList' in list:
-                    self.wishList = list['wishList']
+                if 'electList' in list:
+                    self.electList = list['electList']
                 if 'withdrawList' in list:
                     self.withdrawList = list['withdrawList']
             print('导入完毕')
         except OSError as e:
             print(e.strerror, '文件打开失败')
 
-    def login(self, args):
+    def login(self, args=[]):
         argc = len(args)
-        uid = argc > 1 and args[1] or input('请输入学号: ')
-        key = argc > 2 and args[2] or input('请输入密码: ')
-        res = self.xuankewang.login(uid, key)
+        self.uid = argc > 1 and args[1] or input('请输入学号: ')
+        self.password = argc > 2 and args[2] or input('请输入密码: ')
+        res = self.xuankewang.login(self.uid, self.password)
         if res:
             self.xuankewang.user = res['user']
             print('登录成功')
+            return 0
         else:
             print('登陆失败, 账号或密码错误')
+            return -1
 
-    def round(self, args):
+    def round(self, args=[]):
         argc = len(args)
         self.xuankewang.roundId = argc > 1 and args[1]
         if not self.xuankewang.roundId:
@@ -177,9 +194,11 @@ class Spider:
                     # print('remark =', roundInfo['remark'])
                 self.xuankewang.roundId = int(input('请选择选课轮次ID: '))
         print('RoundId ->', self.xuankewang.roundId)
+        self.xuankewang.getDataBk(useCache=False)
 
-    def help(self, op):
-        print('未知操作 ->', op)
+    def help(self, op=''):
+        if op:
+            print('未知操作 ->', op)
         print('l|login  [uid] [password]    -> 登录')
         print('r|round  [roundId]           -> 选择选课轮次')
         print('msg                          -> 获取 1.tongji 上的通知')
@@ -201,7 +220,7 @@ class Spider:
 
     def book(self):
         try:
-            classInfo = xuankewang.chooseCourseAndClass()
+            classInfo = xuankewang.cuseCacheass()
             self.xuankewang._login4m3(
                 self.xuankewang.uid, self.xuankewang.password)
             res = self.xuankewang.s.post('http://4m3.tongji.edu.cn/eams/courseTableForStd!searchTextbook.action', params={
@@ -214,18 +233,17 @@ class Spider:
     def start(self):
         try:
             tryElectTimes = 0  # 选课请求次数
-            while len(self.wishList):
+            while len(self.electList):
                 successCoursesList = []
                 tryElectTimes += 1
                 print('发送选课请求 #', tryElectTimes)
-                msg = self.xuankewang.elect(self.wishList, self.withdrawList)
+                msg = self.xuankewang.elect(self.electList, self.withdrawList)
                 if not msg:
                     print('检查是否掉线...')
                     msg = self.xuankewang.loginCheck()
                     if msg['status'] != 'Init':
                         print('已掉线,重新登录中...')
-                        self.xuankewang.login(
-                            self.xuankewang.uid, self.xuankewang.password)
+                        self.xuankewang.login(self.uid, self.password)
 
                     for tryLoadingTimes in range(5):
                         print('加载中...', tryLoadingTimes)
@@ -242,15 +260,15 @@ class Spider:
                         successCoursesList = electRes['successCourses']
                         if successCoursesList:
                             newList = []
-                            for courseReq in wishList:
+                            for courseReq in self.electList:
                                 if courseReq['teachClassId'] in successCoursesList:
                                     print(courseReq['teachClassCode'],
                                           courseReq['courseName'], courseReq['teacherName'], '选课成功')
                                 else:
                                     newList.append(courseReq)
-                            wishList = newList[:]
+                            self.electList = newList[:]
                             newList = []
-                            for courseReq in withdrawList:
+                            for courseReq in self.withdrawList:
                                 if courseReq['teachClassId'] in successCoursesList:
                                     print(courseReq['teachClassCode'],
                                           courseReq['courseName'], courseReq['teacherName'], '退课成功')
@@ -269,13 +287,13 @@ class Spider:
 
     def main(self):
         while True:
-            if self.wishList:
-                print('当前抢课列表: ')
-                for index, courseReq in enumerate(self.wishList):
+            if self.electList:
+                print('当前待选课列表: ')
+                for index, courseReq in enumerate(self.electList):
                     print(index, '->', courseReq['teachClassCode'],
                           courseReq['courseName'], courseReq['teacherName'])
             if self.withdrawList:
-                print('当前退课列表: ')
+                print('当前待退课列表: ')
                 for index, courseReq in enumerate(self.withdrawList):
                     print(index, '->', courseReq['teachClassCode'],
                           courseReq['courseName'], courseReq['teacherName'])
