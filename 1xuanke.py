@@ -194,7 +194,6 @@ class Spider:
                     # print('remark =', roundInfo['remark'])
                 self.xuankewang.roundId = int(input('请选择选课轮次ID: '))
         print('RoundId ->', self.xuankewang.roundId)
-        self.xuankewang.getDataBk(useCache=False)
 
     def help(self, op=''):
         if op:
