@@ -124,7 +124,7 @@ class xuanke1(object):
     @json_api
     def currentTermCalendar(self):
         '''获取当前学期信息'''
-        return get(self.s, xuanke1.host+'/api/baseresservice/schoolCalendar/currentTermCalendar',
+        return get(self.s, xuanke1.sslhost+'/api/baseresservice/schoolCalendar/currentTermCalendar',
                    {'_t': timestamp()})
 
     @json_api
@@ -174,7 +174,7 @@ class xuanke1(object):
             uid = str(self.uid)
         if type is None:
             type = str(self.user['type'])
-        return get(self.s, xuanke1.host+'/api/studentservice/studentInfo/findUserInfoByIdType',
+        return get(self.s, xuanke1.sslhost+'/api/studentservice/studentInfo/findUserInfoByIdType',
                    params={
                        'userId': b64encode(uid.encode('utf-8')),
                        'type': b64encode(type.encode('utf-8')),
@@ -188,7 +188,7 @@ class xuanke1(object):
             uid = str(self.uid)
         if type is None:
             type = str(self.user['type'])
-        return get(self.s, xuanke1.host+'/api/studentservice/studentInfo/findUserInfoByType',
+        return get(self.s, xuanke1.sslhost+'/api/studentservice/studentInfo/findUserInfoByType',
                    params={
                        'userId': b64encode(uid.encode('utf-8')),
                        'type': b64encode(type.encode('utf-8')),
@@ -213,7 +213,7 @@ class xuanke1(object):
         '''检查是否登录成功, 选课前可以调用, status=Init说明OK'''
         if uid is None:
             uid = self.uid
-        return post(self.s, xuanke1.host+'/api/electionservice/student/loginCheck', data={
+        return post(self.s, xuanke1.sslhost+'/api/electionservice/student/loginCheck', data={
             'roundId': self.roundId,
             'studentId': uid
         })
@@ -221,13 +221,13 @@ class xuanke1(object):
     @json_api
     def loading(self):
         '''loading的时候调用了这个方法, 响应的status=Ready的时候说明OK'''
-        return post(self.s, xuanke1.host+'/api/electionservice/student/' +
+        return post(self.s, xuanke1.sslhost+'/api/electionservice/student/' +
                     str(self.roundId)+'/loading')
 
     @json_api
     def electRes(self):
         '''轮询选课状态, 响应的status=Processing的时候等待, 为Ready的时候说明完毕, 返回结果'''
-        return post(self.s, xuanke1.host+'/api/electionservice/student/' +
+        return post(self.s, xuanke1.sslhost+'/api/electionservice/student/' +
                     str(self.roundId)+'/electRes')
 
     def getDataBk(self, useCache=False):
@@ -247,7 +247,7 @@ class xuanke1(object):
             return {}
 
         res = post(self.s,
-                   xuanke1.host+'/api/electionservice/student/'+str(self.roundId)+'/getDataBk')
+                   xuanke1.sslhost+'/api/electionservice/student/'+str(self.roundId)+'/getDataBk')
         if res.ok:
             with open('cache.json', mode='w') as file:  # 如果获取成功, 本地保存一下
                 json.dump(res.json()['data'], file)
@@ -256,7 +256,7 @@ class xuanke1(object):
     @json_api
     def getTeachClass4Limit(self, courseCode):
         '''获取课程开班情况(包括已选人数等), courseCode为6位课程代码'''
-        return post(self.s, xuanke1.host+'/api/electionservice/student/getTeachClass4Limit', params={
+        return post(self.s, xuanke1.sslhost+'/api/electionservice/student/getTeachClass4Limit', params={
             'roundId': self.roundId,
             'courseCode': courseCode,
             'studentId': self.uid
@@ -306,7 +306,7 @@ class xuanke1(object):
         '''获取个人培养计划(各部分学分数)'''
         if uid is None:
             uid = self.uid
-        return get(self.s, xuanke1.host+'/api/cultureservice/culturePlan/studentPlanCountByStuId', params={'studentId': uid})
+        return get(self.s, xuanke1.sslhost+'/api/cultureservice/culturePlan/studentPlanCountByStuId', params={'studentId': uid})
 
     @json_api
     def elect(self, courseList, withdrawClassList=[]):
@@ -318,7 +318,7 @@ class xuanke1(object):
             'teachClassId': 111111112483123,  # 班级ID
             'teacherName': 'xx'  # 教师名
         }'''
-        return post(self.s, xuanke1.host+'/api/electionservice/student/elect', data=json.dumps({
+        return post(self.s, xuanke1.sslhost+'/api/electionservice/student/elect', data=json.dumps({
             'roundId': self.roundId,
             'elecClassList': courseList,
             'withdrawClassList': withdrawClassList
