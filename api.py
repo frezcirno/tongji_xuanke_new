@@ -114,6 +114,8 @@ class xuanke1(object):
         return res
 
     def logout(self):
+        if not self.s.cookies.get('sessionid'):
+            return {}
         post(self.s, xuanke1.sslhost+'/api/sessionservice/session/logout',
              data={
                  'uid': self.uid,

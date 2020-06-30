@@ -232,7 +232,7 @@ class Spider:
     def start(self):
         try:
             tryElectTimes = 0  # 选课请求次数
-            while len(self.electList):
+            while len(self.electList) or len(self.withdrawList):
                 successCoursesList = []
                 tryElectTimes += 1
                 print('发送选课请求 #', tryElectTimes)
@@ -273,7 +273,7 @@ class Spider:
                                           courseReq['courseName'], courseReq['teacherName'], '退课成功')
                                 else:
                                     newList.append(courseReq)
-                            withdrawList = newList[:]
+                            self.withdrawList = newList[:]
                         if electRes['failedReasons']:
                             print(electRes['failedReasons'])
                         break
